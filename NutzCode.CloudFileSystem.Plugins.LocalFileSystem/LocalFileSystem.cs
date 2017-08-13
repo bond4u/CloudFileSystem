@@ -1,5 +1,6 @@
 ﻿﻿using System;
-using System.Linq;
+ using System.Collections.Generic;
+ using System.Linq;
 using System.Threading.Tasks;
 using Path = Pri.LongPath.Path;
 using Directory = Pri.LongPath.Directory;
@@ -65,23 +66,25 @@ namespace NutzCode.CloudFileSystem.Plugins.LocalFileSystem
         {
             try
             {
-                if (path.StartsWith("\\\\"))
+                // Allow either and convert to OS desired later
+                if (path.StartsWith("\\\\") || path.StartsWith("//"))
                 {
-                    int idx = path.IndexOf("\\", 2);
+                    int idx = path.IndexOf(System.IO.Path.DirectorySeparatorChar, 2);
                     if (idx >= 0)
                     {
-                        idx = path.IndexOf("\\", idx + 1);
+                        idx = path.IndexOf(System.IO.Path.DirectorySeparatorChar, idx + 1);
                         if (idx < 0)
                             idx = path.Length;
                     }
                     else
                         idx = path.Length;
                     string share = path.Substring(0, idx);
-                    if (!System.IO.Directory.Exists(share))
+                    if (!Directory.Exists(share))
                         return new FileSystemResult<IObject>("Not found");
-                    if (!FS.Directories.Any(a => a.FullName == share))
+                    if (FS.Directories.All(a => !a.FullName.Equals(share, StringComparison.InvariantCultureIgnoreCase)))
                         FS.AddUncPath(share);
-                    path = path.Replace(share, share.Replace("\\", "*"));
+                    path = path.Replace(share, share.Replace('\\', '*'));
+                    path = path.Replace(share, share.Replace('/', '*'));
                 }
             }
             catch (Exception e)
@@ -96,19 +99,24 @@ namespace NutzCode.CloudFileSystem.Plugins.LocalFileSystem
         public FileSystemSizes Sizes { get; private set; }
 
 
-        public async Task<FileSystemResult<IDirectory>> GetRoot()
+        public async Task<FileSystemResult<List<IDirectory>>> GetRootsAsync()
         {
             try
             {
                 LocalRoot l = new LocalRoot(FS);
                 await l.PopulateAsync();
-                return new FileSystemResult<IDirectory>(l);
+                return new FileSystemResult<List<IDirectory>>(l.IntDirectories.Cast<IDirectory>().ToList());
             }
             catch (Exception e)
             {
                 // Last ditch effort to catch errors, this needs to always succeed.
-                return new FileSystemResult<IDirectory>(e.Message);
+                return new FileSystemResult<List<IDirectory>>(e.Message);
             }
+        }
+
+        public FileSystemResult<List<IDirectory>> GetRoots()
+        {
+            return Task.Run(async () => await GetRootsAsync()).Result;
         }
     }
 }
